@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Visualisasi Clustering — K-Means & Agglomerative</title>
+<style>
+  :root{
+    --bg:#F6F4EE;
+    --surface:#FFFFFF;
+    --ink:#1E2422;
+    --muted:#6B7568;
+    --line:#E1DDD1;
+    --teal:#0F6E62;
+    --teal-dark:#0A4D44;
+    --amber:#C2740A;
+    --cream-2:#EFEBDE;
+    --mono: 'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace;
+    --sans: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:var(--sans);
+    line-height:1.5;
+    padding:28px 18px 60px;
+  }
+  .wrap{max-width:1180px;margin:0 auto;}
+
+  header.hero{
+    border:1px solid var(--line);
+    background:linear-gradient(135deg, var(--teal) 0%, var(--teal-dark) 100%);
+    border-radius:14px;
+    padding:28px 30px;
+    color:#F3F1E6;
+    margin-bottom:22px;
+    position:relative;
+    overflow:hidden;
+  }
+  header.hero::after{
+    content:"";
+    position:absolute; right:-60px; top:-60px;
+    width:220px;height:220px;border-radius:50%;
+    background:radial-gradient(circle, rgba(255,255,255,0.10), transparent 70%);
+  }
+  header.hero .eyebrow{
+    font-family:var(--mono); font-size:11.5px; letter-spacing:.14em; text-transform:uppercase;
+    opacity:.8; margin-bottom:8px;
+  }
+  header.hero h1{margin:0 0 8px; font-size:26px; font-weight:800; letter-spacing:-0.01em;}
+  header.hero p{margin:0; opacity:.88; max-width:640px; font-size:14.5px;}
+
+  .card{
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:20px 22px;
+    margin-bottom:18px;
+  }
+  .card h2{
+    font-size:16px; margin:0 0 4px; letter-spacing:-0.01em;
+    display:flex; align-items:center; gap:8px;
+  }
+  .card h2 .tag{
+    font-family:var(--mono); font-size:10.5px; background:var(--cream-2); color:var(--teal-dark);
+    padding:2px 7px; border-radius:5px; letter-spacing:.06em;
+  }
+  .card .desc{color:var(--muted); font-size:13px; margin:0 0 14px;}
+
+  details.dataset summary{
+    cursor:pointer; font-weight:700; font-size:14px; color:var(--teal-dark);
+    list-style:none; display:flex; align-items:center; gap:6px;
+  }
+  details.dataset summary::-webkit-details-marker{display:none;}
+  details.dataset summary::before{content:"▸"; font-size:12px; transition:transform .15s;}
+  details.dataset[open] summary::before{transform:rotate(90deg);}
+  details.dataset summary .count{color:var(--muted); font-weight:500; font-family:var(--mono); font-size:12px;}
+
+  table{border-collapse:collapse; width:100%; font-size:13px;}
+  th,td{border:1px solid var(--line); padding:6px 10px; text-align:center;}
+  th{background:var(--cream-2); color:var(--teal-dark); font-weight:700; font-size:12px;}
+  td.formula{font-family:var(--mono); font-size:11.5px; text-align:left; white-space:nowrap;}
+  .table-scroll{overflow-x:auto; border-radius:8px;}
+  tr.min-cell td.hit{background:#E4F2EE; font-weight:700; color:var(--teal-dark);}
+
+  .tabs{display:flex; gap:6px; margin-bottom:16px;}
+  .tab-btn{
+    flex:1; padding:12px 16px; border-radius:10px; border:1px solid var(--line);
+    background:var(--surface); cursor:pointer; font-family:var(--sans); font-weight:700; font-size:14px;
+    color:var(--muted); transition:all .15s;
+  }
+  .tab-btn .sub{display:block; font-weight:500; font-size:11.5px; margin-top:2px; opacity:.75;}
+  .tab-btn.active{background:var(--teal); color:#fff; border-color:var(--teal);}
+  .panel{display:none;}
+  .panel.active{display:block;}
+
+  .controls{
+    display:flex; align-items:flex-end; gap:14px; flex-wrap:wrap;
+    background:var(--cream-2); border-radius:10px; padding:14px 16px; margin-bottom:18px;
+  }
+  .field{display:flex; flex-direction:column; gap:5px;}
+  .field label{font-size:11.5px; font-weight:700; color:var(--teal-dark); letter-spacing:.03em;}
+  .field input, .field select{
+    padding:8px 10px; border-radius:7px; border:1px solid var(--line); font-family:var(--mono); font-size:13px;
+    width:110px; background:#fff;
+  }
+  .field select{width:150px;}
+  .run-btn{
+    padding:10px 22px; border-radius:8px; border:none; background:var(--teal); color:#fff;
+    font-weight:700; font-size:13.5px; cursor:pointer; transition:background .15s;
+  }
+  .run-btn:hover{background:var(--teal-dark);}
+  .hint{font-size:12px; color:var(--muted); margin-left:auto; max-width:280px;}
+
+  .iter-block{
+    border:1px solid var(--line); border-radius:10px; padding:14px 16px; margin-bottom:14px;
+    background:#FCFBF7;
+  }
+  .iter-block h3{
+    margin:0 0 10px; font-size:13.5px; color:var(--teal-dark); display:flex; align-items:center; gap:8px;
+  }
+  .iter-block h3 .pill{
+    background:var(--teal); color:#fff; font-family:var(--mono); font-size:11px; padding:2px 9px; border-radius:20px;
+  }
+  .centroid-list{display:flex; gap:8px; flex-wrap:wrap; margin:0 0 10px;}
+  .centroid-chip{
+    font-family:var(--mono); font-size:11.5px; padding:4px 10px; border-radius:20px; color:#fff; font-weight:600;
+  }
+  .newc-table{margin-top:10px;}
+  .newc-table td, .newc-table th{font-size:12px;}
+  .converged-note{
+    margin-top:8px; font-size:12.5px; color:var(--teal-dark); font-weight:700;
+    background:#E4F2EE; padding:6px 10px; border-radius:6px; display:inline-block;
+  }
+
+  .cluster-badge{
+    display:inline-flex; align-items:center; gap:5px; padding:2px 9px; border-radius:20px;
+    font-family:var(--mono); font-size:11.5px; font-weight:700; color:#fff;
+  }
+
+  .flex-row{display:flex; gap:20px; flex-wrap:wrap; align-items:flex-start;}
+  .flex-row > .col{flex:1; min-width:320px;}
+
+  svg.viz{width:100%; height:auto; display:block; background:#FCFBF7; border:1px solid var(--line); border-radius:10px;}
+  .legend{display:flex; gap:12px; flex-wrap:wrap; margin-top:10px; font-size:12px;}
+  .legend .item{display:flex; align-items:center; gap:6px; color:var(--muted);}
+  .legend .swatch{width:11px; height:11px; border-radius:3px; display:inline-block;}
+
+  .stats-row{display:flex; gap:10px; flex-wrap:wrap; margin-top:12px;}
+  .stat-card{
+    flex:1; min-width:140px; background:var(--cream-2); border-radius:9px; padding:10px 12px;
+  }
+  .stat-card .k{font-size:11px; color:var(--muted); font-weight:700; text-transform:uppercase; letter-spacing:.04em;}
+  .stat-card .v{font-family:var(--mono); font-size:14px; color:var(--teal-dark); font-weight:700; margin-top:2px;}
+
+  details.sub summary{cursor:pointer; font-weight:700; font-size:13px; color:var(--teal-dark); margin-bottom:8px;}
+
+  .empty-note{color:var(--muted); font-size:13px; font-style:italic; padding:10px 0;}
+
+  footer{text-align:center; color:var(--muted); font-size:12px; margin-top:30px;}
+  .step-highlight{background:#FBF0DE !important;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <div class="eyebrow">Data Mining · Analisis Klastering</div>
+    <h1>Visualisasi Clustering: K-Means vs Agglomerative</h1>
+    <p>Dataset pelanggan kafe (20 sampel, 2 fitur: Kunjungan/Bulan &amp; Pengeluaran). Atur jumlah klaster (k) untuk masing-masing metode dan lihat proses perhitungan jarak Euclidean langkah demi langkah, lengkap dengan tabel dan visualisasi.</p>
+  </header>
+
+  <div class="card">
+    <details class="dataset" open>
+      <summary>Dataset Pelanggan Kafe <span class="count">(20 baris · ID, Kunjungan/Bulan, Pengeluaran (Ribu Rp))</span></summary>
+      <div id="dataset-table" class="table-scroll" style="margin-top:12px;"></div>
+    </details>
+  </div>
+
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="kmeans">K-Means Clustering<span class="sub">Centroid iteratif</span></button>
+    <button class="tab-btn" data-tab="agglo">Agglomerative Clustering<span class="sub">Hierarki bottom-up</span></button>
+  </div>
+
+  <!-- ==================== K-MEANS PANEL ==================== -->
+  <div class="panel active" id="panel-kmeans">
+    <div class="card">
+      <h2>Pengaturan K-Means <span class="tag">iterative</span></h2>
+      <p class="desc">Centroid awal diambil dari k titik data pertama (C1 = P1, C2 = P2, dst). Iterasi berhenti otomatis saat keanggotaan klaster tidak lagi berubah.</p>
+      <div class="controls">
+        <div class="field">
+          <label for="kmeans-k">Jumlah klaster (k)</label>
+          <input type="number" id="kmeans-k" min="2" max="8" value="2">
+        </div>
+        <button class="run-btn" id="kmeans-run">Jalankan K-Means</button>
+        <div class="hint">Setiap iterasi menampilkan tabel jarak ke tiap centroid lengkap dengan rumus √(x−cx)²+(y−cy)².</div>
+      </div>
+      <div id="kmeans-iterations"></div>
+      <div id="kmeans-final"></div>
+    </div>
+  </div>
+
+  <!-- ==================== AGGLOMERATIVE PANEL ==================== -->
+  <div class="panel" id="panel-agglo">
+    <div class="card">
+      <h2>Pengaturan Agglomerative <span class="tag">bottom-up</span></h2>
+      <p class="desc">Setiap titik dimulai sebagai klaster sendiri, lalu dua klaster terdekat digabung berulang kali hingga tersisa k klaster. Pilih metode linkage untuk menentukan cara mengukur jarak antar klaster.</p>
+      <div class="controls">
+        <div class="field">
+          <label for="agglo-k">Jumlah klaster (k)</label>
+          <input type="number" id="agglo-k" min="1" max="19" value="3">
+        </div>
+        <div class="field">
+          <label for="agglo-linkage">Metode linkage</label>
+          <select id="agglo-linkage">
+            <option value="single">Single (min)</option>
+            <option value="complete">Complete (max)</option>
+            <option value="average">Average (mean)</option>
+          </select>
+        </div>
+        <button class="run-btn" id="agglo-run">Jalankan Agglomerative</button>
+        <div class="hint">Proses akan menghitung matriks jarak awal, lalu menggabungkan klaster terdekat langkah demi langkah sampai tersisa k klaster.</div>
+      </div>
+
+      <details class="sub" id="agglo-dist-details" style="display:none;">
+        <summary>Matriks Jarak Euclidean Awal (20 × 20)</summary>
+        <div id="agglo-distmatrix" class="table-scroll" style="margin-bottom:16px;"></div>
+      </details>
+
+      <div id="agglo-mergesteps"></div>
+      <div id="agglo-dendro"></div>
+      <div id="agglo-final"></div>
+    </div>
+  </div>
+
+  <footer>Dibuat untuk tugas Data Mining / Machine Learning · Algoritma dihitung langsung di browser dari dataset yang diunggah.</footer>
+</div>
+
+<script>
+/* ============================= DATA ============================= */
+const RAW_DATA = [
+  ["P1",2,25],["P2",3,30],["P3",2,28],["P4",4,35],["P5",3,32],
+  ["P6",7,60],["P7",8,65],["P8",6,58],["P9",7,62],["P10",8,68],
+  ["P11",12,110],["P12",13,115],["P13",11,105],["P14",14,120],["P15",12,112],
+  ["P16",5,50],["P17",6,55],["P18",10,95],["P19",9,88],["P20",10,92]
+];
+const POINTS = RAW_DATA.map(([id,x,y]) => ({id, x, y}));
+const FEATURE_X_LABEL = "Kunjungan/Bulan";
+const FEATURE_Y_LABEL = "Pengeluaran (Ribu Rp)";
+
+const PALETTE = ['#0F6E62','#C2740A','#4F46E5','#E11D48','#059669','#7C3AED','#0891B2','#EA580C','#65A30D','#DB2777'];
+function clusterColor(i){ return PALETTE[i % PALETTE.length]; }
+
+function fmt(n, d=2){ return Number(n).toFixed(d); }
+function euclid(a,b){ return Math.sqrt((a.x-b.x)**2 + (a.y-b.y)**2); }
+
+/* ============================= DATASET TABLE ============================= */
+function renderDatasetTable(){
+  let rows = POINTS.map(p => `<tr><td>${p.id}</td><td>${p.x}</td><td>${p.y}</td></tr>`).join("");
+  document.getElementById('dataset-table').innerHTML = `
+    <table>
+      <thead><tr><th>ID Pelanggan</th><th>${FEATURE_X_LABEL}</th><th>${FEATURE_Y_LABEL}</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+renderDatasetTable();
+
+/* ============================= TABS ============================= */
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('panel-' + btn.dataset.tab).classList.add('active');
+  });
+});
+
+/* ============================= SCATTER PLOT ============================= */
+function drawScatter(containerEl, assignment, centroids, k, opts={}){
+  const W = 640, H = 420, M = 46;
+  const xs = POINTS.map(p=>p.x), ys = POINTS.map(p=>p.y);
+  let xMin = Math.min(...xs), xMax = Math.max(...xs);
+  let yMin = Math.min(...ys), yMax = Math.max(...ys);
+  if(centroids){ centroids.forEach(c=>{ xMin=Math.min(xMin,c.x); xMax=Math.max(xMax,c.x); yMin=Math.min(yMin,c.y); yMax=Math.max(yMax,c.y);}); }
+  const padX = (xMax-xMin)*0.12 || 1, padY = (yMax-yMin)*0.12 || 1;
+  xMin -= padX; xMax += padX; yMin -= padY; yMax += padY;
+  const sx = v => M + (v-xMin)/(xMax-xMin) * (W-2*M);
+  const sy = v => H-M - (v-yMin)/(yMax-yMin) * (H-2*M);
+
+  let grid = "";
+  const nTicksX = 6, nTicksY = 6;
+  for(let i=0;i<=nTicksX;i++){
+    const vx = xMin + (xMax-xMin)*i/nTicksX;
+    const X = sx(vx);
+    grid += `<line x1="${X}" y1="${M}" x2="${X}" y2="${H-M}" stroke="#E1DDD1" stroke-width="1"/>`;
+    grid += `<text x="${X}" y="${H-M+16}" font-size="10" fill="#6B7568" text-anchor="middle" font-family="IBM Plex Mono, monospace">${vx.toFixed(0)}</text>`;
+  }
+  for(let i=0;i<=nTicksY;i++){
+    const vy = yMin + (yMax-yMin)*i/nTicksY;
+    const Y = sy(vy);
+    grid += `<line x1="${M}" y1="${Y}" x2="${W-M}" y2="${Y}" stroke="#E1DDD1" stroke-width="1"/>`;
+    grid += `<text x="${M-8}" y="${Y+3}" font-size="10" fill="#6B7568" text-anchor="end" font-family="IBM Plex Mono, monospace">${vy.toFixed(0)}</text>`;
+  }
+
+  let pts = "";
+  POINTS.forEach((p,i) => {
+    const c = assignment && assignment[i]>=0 ? clusterColor(assignment[i]) : '#94A08F';
+    pts += `<circle cx="${sx(p.x)}" cy="${sy(p.y)}" r="6.5" fill="${c}" stroke="#fff" stroke-width="1.5"/>`;
+    pts += `<text x="${sx(p.x)}" y="${sy(p.y)-10}" font-size="9.5" fill="#3A4038" text-anchor="middle" font-family="IBM Plex Mono, monospace">${p.id}</text>`;
+  });
+
+  let cent = "";
+  if(centroids){
+    centroids.forEach((c,i) => {
+      const col = clusterColor(i);
+      const X = sx(c.x), Y = sy(c.y);
+      cent += `<path d="M${X-9},${Y} L${X},${Y-9} L${X+9},${Y} L${X},${Y+9} Z" fill="${col}" stroke="#1E2422" stroke-width="1.5"/>`;
+      cent += `<text x="${X}" y="${Y-14}" font-size="10.5" font-weight="700" fill="#1E2422" text-anchor="middle" font-family="IBM Plex Mono, monospace">C${i+1}</text>`;
+    });
+  }
+
+  containerEl.innerHTML = `
+    <svg class="viz" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">
+      ${grid}
+      <line x1="${M}" y1="${H-M}" x2="${W-M}" y2="${H-M}" stroke="#1E2422" stroke-width="1.2"/>
+      <line x1="${M}" y1="${M}" x2="${M}" y2="${H-M}" stroke="#1E2422" stroke-width="1.2"/>
+      <text x="${W/2}" y="${H-8}" font-size="11" fill="#1E2422" text-anchor="middle" font-family="Manrope, sans-serif">${FEATURE_X_LABEL}</text>
+      <text x="14" y="${H/2}" font-size="11" fill="#1E2422" text-anchor="middle" font-family="Manrope, sans-serif" transform="rotate(-90 14 ${H/2})">${FEATURE_Y_LABEL}</text>
+      ${pts}
+      ${cent}
+    </svg>`;
+}
+
+function legendHTML(k){
+  let items = "";
+  for(let i=0;i<k;i++){
+    items += `<div class="item"><span class="swatch" style="background:${clusterColor(i)}"></span>Cluster ${i+1}</div>`;
+  }
+  return `<div class="legend">${items}</div>`;
+}
+
+function clusterBadge(i){
+  return `<span class="cluster-badge" style="background:${clusterColor(i)}">Cluster ${i+1}</span>`;
+}
+
+function finalTableHTML(assignment, extraColsFn){
+  let rows = POINTS.map((p,i) => `<tr><td>${p.id}</td><td>${p.x}</td><td>${p.y}</td><td>${clusterBadge(assignment[i])}</td></tr>`).join("");
+  return `<table><thead><tr><th>ID</th><th>${FEATURE_X_LABEL}</th><th>${FEATURE_Y_LABEL}</th><th>Klaster</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function statsRowHTML(assignment, k){
+  let cards = "";
+  for(let c=0;c<k;c++){
+    const members = POINTS.filter((p,i)=>assignment[i]===c);
+    const avgX = members.length ? members.reduce((s,m)=>s+m.x,0)/members.length : 0;
+    const avgY = members.length ? members.reduce((s,m)=>s+m.y,0)/members.length : 0;
+    cards += `<div class="stat-card">
+      <div class="k" style="color:${clusterColor(c)}">Cluster ${c+1}</div>
+      <div class="v">${members.length} anggota</div>
+      <div style="font-family:var(--mono); font-size:11px; color:var(--muted); margin-top:4px;">rata² (${fmt(avgX,1)}, ${fmt(avgY,1)})</div>
+    </div>`;
+  }
+  return `<div class="stats-row">${cards}</div>`;
+}
+
+/* ============================= K-MEANS ============================= */
+function runKMeans(k, maxIter=25){
+  let centroids = POINTS.slice(0,k).map(p => ({x:p.x, y:p.y}));
+  let assignment = new Array(POINTS.length).fill(-1);
+  const iterations = [];
+  for(let iter=0; iter<maxIter; iter++){
+    const rows = POINTS.map(p => {
+      const dists = centroids.map(c => euclid(p,c));
+      const cluster = dists.indexOf(Math.min(...dists));
+      return {p, dists, cluster};
+    });
+    const newAssignment = rows.map(r=>r.cluster);
+    const changed = newAssignment.some((v,i)=>v!==assignment[i]);
+    const oldCentroids = centroids.map(c=>({...c}));
+    const newCentroids = centroids.map((c,ci) => {
+      const members = rows.filter(r=>r.cluster===ci);
+      if(members.length===0) return {...c};
+      return {
+        x: members.reduce((s,m)=>s+m.p.x,0)/members.length,
+        y: members.reduce((s,m)=>s+m.p.y,0)/members.length
+      };
+    });
+    iterations.push({iter:iter+1, centroidsUsed:oldCentroids, rows, newCentroids, changed});
+    centroids = newCentroids;
+    assignment = newAssignment;
+    if(!changed) break;
+  }
+  return {iterations, finalAssignment:assignment, finalCentroids:centroids};
+}
+
+function renderKMeansIteration(block){
+  const k = block.centroidsUsed.length;
+  let chips = block.centroidsUsed.map((c,i) => `<span class="centroid-chip" style="background:${clusterColor(i)}">C${i+1} (${fmt(c.x,1)}, ${fmt(c.y,1)})</span>`).join("");
+
+  let head = `<th>ID</th><th>X</th><th>Y</th>`;
+  for(let i=0;i<k;i++) head += `<th>Jarak ke C${i+1}(${fmt(block.centroidsUsed[i].x,1)},${fmt(block.centroidsUsed[i].y,1)})</th>`;
+  head += `<th>Klaster Terpilih</th>`;
+
+  let rows = block.rows.map(r => {
+    const minD = Math.min(...r.dists);
+    let cells = r.dists.map((d,i) => {
+      const c = block.centroidsUsed[i];
+      const cls = (d===minD) ? 'formula hit' : 'formula';
+      return `<td class="${cls}">√(${r.p.x}−${fmt(c.x,1)})²+(${r.p.y}−${fmt(c.y,1)})²=${fmt(d)}</td>`;
+    }).join("");
+    return `<tr><td>${r.p.id}</td><td>${r.p.x}</td><td>${r.p.y}</td>${cells}<td>${clusterBadge(r.cluster)}</td></tr>`;
+  }).join("");
+
+  let newCentroidRows = block.newCentroids.map((c,i) => {
+    const members = block.rows.filter(r=>r.cluster===i).map(r=>r.p.id);
+    return `<tr>
+      <td>${clusterBadge(i)}</td>
+      <td style="font-family:var(--mono); font-size:11px;">${members.join(', ') || '–'}</td>
+      <td class="formula">x̄ = (${members.length ? block.rows.filter(r=>r.cluster===i).map(r=>r.p.x).join('+') : '–'}) / ${members.length||1} = ${fmt(c.x,2)}</td>
+      <td class="formula">ȳ = (${members.length ? block.rows.filter(r=>r.cluster===i).map(r=>r.p.y).join('+') : '–'}) / ${members.length||1} = ${fmt(c.y,2)}</td>
+    </tr>`;
+  }).join("");
+
+  const note = block.changed ? "" : `<div class="converged-note">✓ Konvergen — keanggotaan klaster tidak berubah lagi.</div>`;
+
+  return `
+  <div class="iter-block">
+    <h3><span class="pill">Iterasi ${block.iter}</span> Centroid yang digunakan:</h3>
+    <div class="centroid-list">${chips}</div>
+    <div class="table-scroll">
+      <table><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table>
+    </div>
+    <table class="newc-table">
+      <thead><tr><th>Klaster</th><th>Anggota</th><th>Centroid Baru X</th><th>Centroid Baru Y</th></tr></thead>
+      <tbody>${newCentroidRows}</tbody>
+    </table>
+    ${note}
+  </div>`;
+}
+
+document.getElementById('kmeans-run').addEventListener('click', () => {
+  const k = Math.max(2, Math.min(10, parseInt(document.getElementById('kmeans-k').value) || 2));
+  const result = runKMeans(k);
+
+  const iterEl = document.getElementById('kmeans-iterations');
+  iterEl.innerHTML = result.iterations.map(renderKMeansIteration).join("");
+
+  const finalEl = document.getElementById('kmeans-final');
+  finalEl.innerHTML = `
+    <div class="card" style="background:#FCFBF7;">
+      <h2>Hasil Akhir K-Means <span class="tag">k = ${k}</span></h2>
+      <p class="desc">Konvergen setelah ${result.iterations.length} iterasi.</p>
+      <div class="flex-row">
+        <div class="col" id="kmeans-scatter"></div>
+        <div class="col">
+          <div class="table-scroll">${finalTableHTML(result.finalAssignment)}</div>
+        </div>
+      </div>
+      ${statsRowHTML(result.finalAssignment, k)}
+    </div>`;
+  drawScatter(document.getElementById('kmeans-scatter'), result.finalAssignment, result.finalCentroids, k);
+  document.getElementById('kmeans-scatter').insertAdjacentHTML('beforeend', legendHTML(k));
+});
+
+/* ============================= AGGLOMERATIVE ============================= */
+const N = POINTS.length;
+const DIST_MATRIX = Array.from({length:N}, () => new Array(N).fill(0));
+for(let i=0;i<N;i++) for(let j=0;j<N;j++) DIST_MATRIX[i][j] = euclid(POINTS[i], POINTS[j]);
+
+function renderDistanceMatrix(){
+  let head = `<th></th>` + POINTS.map(p=>`<th>${p.id}</th>`).join("");
+  let rows = POINTS.map((p,i) => {
+    let cells = POINTS.map((q,j) => `<td style="font-family:var(--mono); font-size:10.5px;">${fmt(DIST_MATRIX[i][j],1)}</td>`).join("");
+    return `<tr><th>${p.id}</th>${cells}</tr>`;
+  }).join("");
+  document.getElementById('agglo-distmatrix').innerHTML = `<table>${`<thead><tr>${head}</tr></thead>`}<tbody>${rows}</tbody></table>`;
+  document.getElementById('agglo-dist-details').style.display = 'block';
+}
+
+function clusterDistance(c1, c2, linkage){
+  let vals = [];
+  for(const i of c1.memberIdx) for(const j of c2.memberIdx) vals.push(DIST_MATRIX[i][j]);
+  if(linkage==='single') return Math.min(...vals);
+  if(linkage==='complete') return Math.max(...vals);
+  return vals.reduce((a,b)=>a+b,0) / vals.length;
+}
+
+function runAgglomerative(linkage){
+  let clusters = POINTS.map((p,idx) => ({
+    id:'L'+idx, members:[p.id], memberIdx:[idx], height:0, left:null, right:null
+  }));
+  let nodeCounter = N;
+  const mergeSteps = [];
+  const historyByK = {};
+  historyByK[clusters.length] = clusters.slice();
+
+  while(clusters.length > 1){
+    let best = {i:-1, j:-1, d:Infinity};
+    for(let i=0;i<clusters.length;i++){
+      for(let j=i+1;j<clusters.length;j++){
+        const d = clusterDistance(clusters[i], clusters[j], linkage);
+        if(d < best.d) best = {i, j, d};
+      }
+    }
+    const a = clusters[best.i], b = clusters[best.j];
+    const node = {
+      id: 'C'+(nodeCounter++),
+      members:[...a.members, ...b.members],
+      memberIdx:[...a.memberIdx, ...b.memberIdx],
+      height: best.d, left:a, right:b
+    };
+    mergeSteps.push({step: mergeSteps.length+1, a, b, dist: best.d, resultCount: clusters.length-1});
+    clusters = clusters.filter((c,idx) => idx!==best.i && idx!==best.j);
+    clusters.push(node);
+    historyByK[clusters.length] = clusters.slice();
+  }
+  return {mergeSteps, historyByK, root: clusters[0]};
+}
+
+function getCutHeight(mergeSteps, k, n){
+  const m = n - k; // merges applied
+  if(m <= 0) return (mergeSteps[0] ? mergeSteps[0].dist * 0.4 : 1);
+  if(m >= mergeSteps.length) return mergeSteps[mergeSteps.length-1].dist * 1.12;
+  return (mergeSteps[m-1].dist + mergeSteps[m].dist) / 2;
+}
+
+function renderMergeSteps(mergeSteps, k, n){
+  const appliedCount = n - k;
+  let rows = mergeSteps.map((s,idx) => {
+    const highlight = idx < appliedCount ? '' : 'style="opacity:.4;"';
+    const marker = idx === appliedCount-1 ? ' class="step-highlight"' : '';
+    return `<tr ${marker} ${highlight}>
+      <td>${s.step}</td>
+      <td style="font-family:var(--mono); font-size:11px;">{${s.a.members.join(', ')}}</td>
+      <td style="font-family:var(--mono); font-size:11px;">{${s.b.members.join(', ')}}</td>
+      <td class="formula">jarak min = ${fmt(s.dist)}</td>
+      <td>${s.resultCount}</td>
+    </tr>`;
+  }).join("");
+  return `
+  <div class="card" style="background:#FCFBF7;">
+    <h2>Riwayat Penggabungan Klaster <span class="tag">linkage</span></h2>
+    <p class="desc">Baris yang ditandai adalah titik saat jumlah klaster mencapai k = ${k}. Baris setelahnya (pudar) adalah penggabungan lanjutan yang tidak digunakan karena proses dihentikan di k = ${k}.</p>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Langkah</th><th>Klaster A</th><th>Klaster B</th><th>Jarak Penggabungan</th><th>Sisa Klaster</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  </div>`;
+}
+
+function drawDendrogram(containerEl, root, mergeSteps, k, n){
+  const leafOrder = [];
+  function assignLeaves(node){
+    if(!node.left && !node.right){ leafOrder.push(node); node.x = leafOrder.length-1; return node.x; }
+    assignLeaves(node.left);
+    assignLeaves(node.right);
+    node.x = (node.left.x + node.right.x) / 2;
+  }
+  assignLeaves(root);
+
+  const spacing = 32, M = 50, topPad = 20;
+  const W = M*2 + spacing*(n-1);
+  const H = 380;
+  const maxHeight = root.height;
+  const usableH = H - topPad - 90; // leave room for rotated labels
+  const yScale = h => topPad + usableH - (h/maxHeight)*usableH;
+  const xScale = x => M + x*spacing;
+
+  let lines = "";
+  function drawNode(node){
+    if(!node.left && !node.right) return;
+    const y = yScale(node.height);
+    const lx = xScale(node.left.x), ly = yScale(node.left.height);
+    const rx = xScale(node.right.x), ry = yScale(node.right.height);
+    lines += `<line x1="${lx}" y1="${ly}" x2="${lx}" y2="${y}" stroke="#3A4038" stroke-width="1.4"/>`;
+    lines += `<line x1="${rx}" y1="${ry}" x2="${rx}" y2="${y}" stroke="#3A4038" stroke-width="1.4"/>`;
+    lines += `<line x1="${lx}" y1="${y}" x2="${rx}" y2="${y}" stroke="#3A4038" stroke-width="1.4"/>`;
+    drawNode(node.left);
+    drawNode(node.right);
+  }
+  drawNode(root);
+
+  // color leaves by flat cluster membership at k
+  const historyForColor = runAgglomerativeHistorySnapshot(mergeSteps, n, k);
+  let leafDots = "", leafLabels = "";
+  leafOrder.forEach(leaf => {
+    const idx = POINTS.findIndex(p=>p.id===leaf.members[0]);
+    const clusterIdx = historyForColor[idx];
+    const X = xScale(leaf.x), Y = yScale(0);
+    leafDots += `<circle cx="${X}" cy="${Y}" r="5" fill="${clusterColor(clusterIdx)}" stroke="#fff" stroke-width="1"/>`;
+    leafLabels += `<text x="${X}" y="${Y+14}" font-size="9.5" fill="#3A4038" text-anchor="end" font-family="IBM Plex Mono, monospace" transform="rotate(-55 ${X} ${Y+14})">${leaf.members[0]}</text>`;
+  });
+
+  const cutH = getCutHeight(mergeSteps, k, n);
+  const cutY = yScale(cutH);
+  const cutLine = `<line x1="${M-16}" y1="${cutY}" x2="${W-M+16}" y2="${cutY}" stroke="#C2740A" stroke-width="1.6" stroke-dasharray="6,4"/>
+    <text x="${W-M+18}" y="${cutY+4}" font-size="11" fill="#C2740A" font-weight="700" font-family="IBM Plex Mono, monospace">k=${k}</text>`;
+
+  containerEl.innerHTML = `
+    <div class="card" style="background:#FCFBF7;">
+      <h2>Dendrogram <span class="tag">${n-1} penggabungan</span></h2>
+      <p class="desc">Garis putus-putus oranye menandai titik potong yang menghasilkan k = ${k} klaster. Titik daun diwarnai sesuai klaster akhirnya.</p>
+      <div class="table-scroll">
+        <svg class="viz" viewBox="0 0 ${W+40} ${H}" xmlns="http://www.w3.org/2000/svg" style="min-width:${W+40}px;">
+          ${cutLine}
+          ${lines}
+          ${leafDots}
+          ${leafLabels}
+        </svg>
+      </div>
+    </div>`;
+}
+
+// helper: recompute flat cluster index per point for a given k, using merge steps directly (avoids relying on historyByK object identity)
+function runAgglomerativeHistorySnapshot(mergeSteps, n, k){
+  // rebuild union-find style clusters applying first (n-k) merges
+  let parent = Array.from({length:n}, (_,i)=>i);
+  function find(x){ while(parent[x]!==x){ x=parent[x]; } return x; }
+  function union(a,b){ const ra=find(a), rb=find(b); if(ra!==rb) parent[rb]=ra; }
+  const idToIdx = {}; POINTS.forEach((p,i)=>idToIdx[p.id]=i);
+  const applied = Math.max(0, n-k);
+  for(let s=0; s<applied && s<mergeSteps.length; s++){
+    const step = mergeSteps[s];
+    const aIdx = idToIdx[step.a.members[0]];
+    const bIdx = idToIdx[step.b.members[0]];
+    step.a.members.forEach(m => union(idToIdx[m], aIdx));
+    step.b.members.forEach(m => union(idToIdx[m], aIdx));
+  }
+  const roots = {};
+  const assignment = new Array(n).fill(0);
+  let counter = 0;
+  for(let i=0;i<n;i++){
+    const r = find(i);
+    if(!(r in roots)) roots[r] = counter++;
+    assignment[i] = roots[r];
+  }
+  return assignment;
+}
+
+document.getElementById('agglo-run').addEventListener('click', () => {
+  const k = Math.max(1, Math.min(19, parseInt(document.getElementById('agglo-k').value) || 3));
+  const linkage = document.getElementById('agglo-linkage').value;
+
+  renderDistanceMatrix();
+
+  const result = runAgglomerative(linkage);
+  document.getElementById('agglo-mergesteps').innerHTML = renderMergeSteps(result.mergeSteps, k, N);
+
+  const dendroEl = document.getElementById('agglo-dendro');
+  drawDendrogram(dendroEl, result.root, result.mergeSteps, k, N);
+
+  const assignment = runAgglomerativeHistorySnapshot(result.mergeSteps, N, k);
+
+  const finalEl = document.getElementById('agglo-final');
+  finalEl.innerHTML = `
+    <div class="card" style="background:#FCFBF7;">
+      <h2>Hasil Akhir Agglomerative <span class="tag">k = ${k} · ${linkage}</span></h2>
+      <p class="desc">Klaster akhir setelah ${N-k} kali penggabungan dari total ${N-1} kemungkinan penggabungan.</p>
+      <div class="flex-row">
+        <div class="col" id="agglo-scatter"></div>
+        <div class="col">
+          <div class="table-scroll">${finalTableHTML(assignment)}</div>
+        </div>
+      </div>
+      ${statsRowHTML(assignment, k)}
+    </div>`;
+  drawScatter(document.getElementById('agglo-scatter'), assignment, null, k);
+  document.getElementById('agglo-scatter').insertAdjacentHTML('beforeend', legendHTML(k));
+});
+
+// auto-run both on load with default k
+document.getElementById('kmeans-run').click();
+document.getElementById('agglo-run').click();
+</script>
+</body>
+</html>

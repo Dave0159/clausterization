@@ -176,27 +176,36 @@
   .mrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;font-size:12px;color:var(--muted);}
   .mrow select,.mrow input{padding:7px 8px;border-radius:7px;border:1px solid var(--line);font-family:var(--mono);font-size:12.5px;background:#fff;}
   .mrow select{width:190px;} .mrow input{width:95px;}
+  .feat-list{display:flex;flex-wrap:wrap;gap:8px;}
+  .chk{display:flex;align-items:center;gap:6px;padding:6px 11px;border:1px solid var(--line);border-radius:8px;background:#fff;font-size:12.5px;font-weight:600;cursor:pointer;}
+  .chk:has(input:checked){border-color:var(--teal);background:#E4F2EE;color:var(--teal-dark);}
+  .mrow .fl{font-size:11px;max-width:70px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .mrow input{width:80px;}
 </style>
 </head>
 <body>
 <div class="wrap">
 
   <header class="hero">
-    <div class="eyebrow">Data Mining · Analisis Klastering</div>
+    <div class="eyebrow">Pembelajaran Mesin · Analisis Klastering</div>
     <h1>Visualisasi Clustering: K-Means vs Agglomerative</h1>
     <p><span id="hero-ds">Dataset contoh: pelanggan kafe (20 sampel, 2 fitur: Kunjungan/Bulan &amp; Pengeluaran).</span> Unggah file .xlsx / .csv milikmu sendiri, atur jumlah klaster (k) untuk masing-masing metode dan lihat proses perhitungan jarak Euclidean langkah demi langkah, lengkap dengan tabel dan visualisasi.</p>
   </header>
 
   <div class="card">
     <h2>Unggah Dataset <span class="tag">.xlsx · .csv</span></h2>
-    <p class="desc">Baris pertama dianggap header (jika berisi teks). Kolom teks pertama dipakai sebagai ID, lalu pilih dua kolom numerik sebagai fitur X dan Y. Maksimal 200 baris dari sheet pertama.</p>
+    <p class="desc">Baris pertama dianggap header (jika berisi teks). Kolom teks pertama dipakai sebagai ID, lalu centang dua kolom numerik atau lebih sebagai fitur. Maksimal 200 baris dari sheet pertama.</p>
     <label class="dropzone" id="dropzone">
       <input type="file" id="file-input" accept=".xlsx,.xls,.csv,.txt" hidden>
       <strong>Klik untuk memilih file</strong> atau seret file ke sini
     </label>
     <div class="controls" id="feature-controls" style="display:none; margin:12px 0 0;">
-      <div class="field"><label for="up-x">Fitur X</label><select id="up-x"></select></div>
-      <div class="field"><label for="up-y">Fitur Y</label><select id="up-y"></select></div>
+      <div class="field" style="flex-basis:100%;"><label>Fitur yang dipakai (centang minimal 2 kolom numerik)</label><div id="feat-list" class="feat-list"></div></div>
+      <div id="plot-axes" style="display:none; gap:14px; flex-wrap:wrap; align-items:flex-end;">
+        <div class="field"><label for="plot-x">Sumbu X grafik</label><select id="plot-x"></select></div>
+        <div class="field"><label for="plot-y">Sumbu Y grafik</label><select id="plot-y"></select></div>
+        <div class="hint" style="margin-left:0;">Clustering memakai semua fitur; grafik hanya memproyeksikan 2 fitur.</div>
+      </div>
     </div>
     <div style="margin-top:12px;"><button type="button" class="btn-ghost" id="use-sample">Pakai dataset contoh</button></div>
     <div id="upload-msg" class="msg"></div>
@@ -222,10 +231,10 @@
       <div class="controls">
         <div class="field">
           <label for="kmeans-k">Jumlah klaster (k)</label>
-          <input type="number" id="kmeans-k" min="2" max="8" value="2">
+          <input type="number" id="kmeans-k" min="2" max="25" value="2">
         </div>
         <button class="run-btn" id="kmeans-run">Jalankan K-Means</button>
-        <div class="hint">Setiap iterasi menampilkan tabel jarak ke tiap centroid lengkap dengan rumus √(x−cx)²+(y−cy)².</div>
+        <div class="hint">Setiap iterasi menampilkan tabel jarak ke tiap centroid lengkap dengan rumus jarak Euclidean ke semua fitur.</div>
       </div>
       <div class="card" id="centroid-card" style="background:#FCFBF7;">
         <h2>Centroid Awal <span class="tag">rekomendasi / manual</span></h2>
@@ -292,22 +301,25 @@ const RAW_DATA = [
   ["P11",12,110],["P12",13,115],["P13",11,105],["P14",14,120],["P15",12,112],
   ["P16",5,50],["P17",6,55],["P18",10,95],["P19",9,88],["P20",10,92]
 ];
-let POINTS = RAW_DATA.map(([id,x,y]) => ({id, x, y}));
-let FEATURE_X_LABEL = "Kunjungan/Bulan";
-let FEATURE_Y_LABEL = "Pengeluaran (Ribu Rp)";
+let POINTS = RAW_DATA.map(([id,x,y]) => ({id, v:[x,y]}));
+let FEATURES = ["Kunjungan/Bulan", "Pengeluaran (Ribu Rp)"];
+let PX = 0, PY = 1;
 
 const PALETTE = ['#0F6E62','#C2740A','#4F46E5','#E11D48','#059669','#7C3AED','#0891B2','#EA580C','#65A30D','#DB2777'];
-function clusterColor(i){ return PALETTE[i % PALETTE.length]; }
+function clusterColor(i){ return i<PALETTE.length ? PALETTE[i] : 'hsl('+((i*137.508)%360).toFixed(0)+',58%,42%)'; }
 
 function fmt(n, d=2){ return Number(n).toFixed(d); }
-function euclid(a,b){ return Math.sqrt((a.x-b.x)**2 + (a.y-b.y)**2); }
+function nz(a){ return String(+Number(a).toFixed(3)); }
+function vecStr(v,d=1){ return '(' + v.map(a=>fmt(a,d)).join(', ') + ')'; }
+function euclid(a,b){ let s=0; for(let d=0; d<a.v.length; d++) s += (a.v[d]-b.v[d])**2; return Math.sqrt(s); }
 
 /* ============================= DATASET TABLE ============================= */
 function renderDatasetTable(){
-  let rows = POINTS.map(p => `<tr><td>${p.id}</td><td>${p.x}</td><td>${p.y}</td></tr>`).join("");
+  const head = FEATURES.map(f=>`<th>${f}</th>`).join('');
+  const rows = POINTS.map(p => `<tr><td>${p.id}</td>${p.v.map(a=>`<td>${nz(a)}</td>`).join('')}</tr>`).join("");
   document.getElementById('dataset-table').innerHTML = `
     <table>
-      <thead><tr><th>ID Pelanggan</th><th>${FEATURE_X_LABEL}</th><th>${FEATURE_Y_LABEL}</th></tr></thead>
+      <thead><tr><th>ID</th>${head}</tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
 }
@@ -326,10 +338,10 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 /* ============================= SCATTER PLOT ============================= */
 function drawScatter(containerEl, assignment, centroids, k, opts={}){
   const W = 640, H = 420, M = 46;
-  const xs = POINTS.map(p=>p.x), ys = POINTS.map(p=>p.y);
+  const xs = POINTS.map(p=>p.v[PX]), ys = POINTS.map(p=>p.v[PY]);
   let xMin = Math.min(...xs), xMax = Math.max(...xs);
   let yMin = Math.min(...ys), yMax = Math.max(...ys);
-  if(centroids){ centroids.forEach(c=>{ xMin=Math.min(xMin,c.x); xMax=Math.max(xMax,c.x); yMin=Math.min(yMin,c.y); yMax=Math.max(yMax,c.y);}); }
+  if(centroids){ centroids.forEach(c=>{ xMin=Math.min(xMin,c.v[PX]); xMax=Math.max(xMax,c.v[PX]); yMin=Math.min(yMin,c.v[PY]); yMax=Math.max(yMax,c.v[PY]);}); }
   const padX = (xMax-xMin)*0.12 || 1, padY = (yMax-yMin)*0.12 || 1;
   xMin -= padX; xMax += padX; yMin -= padY; yMax += padY;
   const sx = v => M + (v-xMin)/(xMax-xMin) * (W-2*M);
@@ -337,31 +349,32 @@ function drawScatter(containerEl, assignment, centroids, k, opts={}){
 
   let grid = "";
   const nTicksX = 6, nTicksY = 6;
+  const tf = (a,r) => r>=8 ? a.toFixed(0) : (r>=0.8 ? a.toFixed(1) : a.toFixed(2));
   for(let i=0;i<=nTicksX;i++){
     const vx = xMin + (xMax-xMin)*i/nTicksX;
     const X = sx(vx);
     grid += `<line x1="${X}" y1="${M}" x2="${X}" y2="${H-M}" stroke="#E1DDD1" stroke-width="1"/>`;
-    grid += `<text x="${X}" y="${H-M+16}" font-size="10" fill="#6B7568" text-anchor="middle" font-family="IBM Plex Mono, monospace">${vx.toFixed(0)}</text>`;
+    grid += `<text x="${X}" y="${H-M+16}" font-size="10" fill="#6B7568" text-anchor="middle" font-family="IBM Plex Mono, monospace">${tf(vx,xMax-xMin)}</text>`;
   }
   for(let i=0;i<=nTicksY;i++){
     const vy = yMin + (yMax-yMin)*i/nTicksY;
     const Y = sy(vy);
     grid += `<line x1="${M}" y1="${Y}" x2="${W-M}" y2="${Y}" stroke="#E1DDD1" stroke-width="1"/>`;
-    grid += `<text x="${M-8}" y="${Y+3}" font-size="10" fill="#6B7568" text-anchor="end" font-family="IBM Plex Mono, monospace">${vy.toFixed(0)}</text>`;
+    grid += `<text x="${M-8}" y="${Y+3}" font-size="10" fill="#6B7568" text-anchor="end" font-family="IBM Plex Mono, monospace">${tf(vy,yMax-yMin)}</text>`;
   }
 
   let pts = "";
   POINTS.forEach((p,i) => {
     const c = assignment && assignment[i]>=0 ? clusterColor(assignment[i]) : '#94A08F';
-    pts += `<circle cx="${sx(p.x)}" cy="${sy(p.y)}" r="6.5" fill="${c}" stroke="#fff" stroke-width="1.5"/>`;
-    pts += `<text x="${sx(p.x)}" y="${sy(p.y)-10}" font-size="9.5" fill="#3A4038" text-anchor="middle" font-family="IBM Plex Mono, monospace">${p.id}</text>`;
+    pts += `<circle cx="${sx(p.v[PX])}" cy="${sy(p.v[PY])}" r="6.5" fill="${c}" stroke="#fff" stroke-width="1.5"/>`;
+    if(N<=60) pts += `<text x="${sx(p.v[PX])}" y="${sy(p.v[PY])-10}" font-size="9.5" fill="#3A4038" text-anchor="middle" font-family="IBM Plex Mono, monospace">${p.id}</text>`;
   });
 
   let cent = "";
   if(centroids){
     centroids.forEach((c,i) => {
       const col = clusterColor(i);
-      const X = sx(c.x), Y = sy(c.y);
+      const X = sx(c.v[PX]), Y = sy(c.v[PY]);
       cent += `<path d="M${X-9},${Y} L${X},${Y-9} L${X+9},${Y} L${X},${Y+9} Z" fill="${col}" stroke="#1E2422" stroke-width="1.5"/>`;
       cent += `<text x="${X}" y="${Y-14}" font-size="10.5" font-weight="700" fill="#1E2422" text-anchor="middle" font-family="IBM Plex Mono, monospace">C${i+1}</text>`;
     });
@@ -372,8 +385,8 @@ function drawScatter(containerEl, assignment, centroids, k, opts={}){
       ${grid}
       <line x1="${M}" y1="${H-M}" x2="${W-M}" y2="${H-M}" stroke="#1E2422" stroke-width="1.2"/>
       <line x1="${M}" y1="${M}" x2="${M}" y2="${H-M}" stroke="#1E2422" stroke-width="1.2"/>
-      <text x="${W/2}" y="${H-8}" font-size="11" fill="#1E2422" text-anchor="middle" font-family="Manrope, sans-serif">${FEATURE_X_LABEL}</text>
-      <text x="14" y="${H/2}" font-size="11" fill="#1E2422" text-anchor="middle" font-family="Manrope, sans-serif" transform="rotate(-90 14 ${H/2})">${FEATURE_Y_LABEL}</text>
+      <text x="${W/2}" y="${H-8}" font-size="11" fill="#1E2422" text-anchor="middle" font-family="Manrope, sans-serif">${FEATURES[PX]}</text>
+      <text x="14" y="${H/2}" font-size="11" fill="#1E2422" text-anchor="middle" font-family="Manrope, sans-serif" transform="rotate(-90 14 ${H/2})">${FEATURES[PY]}</text>
       ${pts}
       ${cent}
     </svg>`;
@@ -391,21 +404,20 @@ function clusterBadge(i){
   return `<span class="cluster-badge" style="background:${clusterColor(i)}">Cluster ${i+1}</span>`;
 }
 
-function finalTableHTML(assignment, extraColsFn){
-  let rows = POINTS.map((p,i) => `<tr><td>${p.id}</td><td>${p.x}</td><td>${p.y}</td><td>${clusterBadge(assignment[i])}</td></tr>`).join("");
-  return `<table><thead><tr><th>ID</th><th>${FEATURE_X_LABEL}</th><th>${FEATURE_Y_LABEL}</th><th>Klaster</th></tr></thead><tbody>${rows}</tbody></table>`;
+function finalTableHTML(assignment){
+  let rows = POINTS.map((p,i) => `<tr><td>${p.id}</td>${p.v.map(a=>`<td>${nz(a)}</td>`).join('')}<td>${clusterBadge(assignment[i])}</td></tr>`).join("");
+  return `<table><thead><tr><th>ID</th>${FEATURES.map(f=>`<th>${f}</th>`).join('')}<th>Klaster</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
 function statsRowHTML(assignment, k){
   let cards = "";
   for(let c=0;c<k;c++){
     const members = POINTS.filter((p,i)=>assignment[i]===c);
-    const avgX = members.length ? members.reduce((s,m)=>s+m.x,0)/members.length : 0;
-    const avgY = members.length ? members.reduce((s,m)=>s+m.y,0)/members.length : 0;
+    const avg = FEATURES.map((_,d)=> members.length ? members.reduce((s,m)=>s+m.v[d],0)/members.length : 0);
     cards += `<div class="stat-card">
       <div class="k" style="color:${clusterColor(c)}">Cluster ${c+1}</div>
       <div class="v">${members.length} anggota</div>
-      <div style="font-family:var(--mono); font-size:11px; color:var(--muted); margin-top:4px;">rata² (${fmt(avgX,1)}, ${fmt(avgY,1)})</div>
+      <div style="font-family:var(--mono); font-size:11px; color:var(--muted); margin-top:4px;">rata² ${vecStr(avg)}</div>
     </div>`;
   }
   return `<div class="stats-row">${cards}</div>`;
@@ -413,7 +425,7 @@ function statsRowHTML(assignment, k){
 
 /* ============================= K-MEANS ============================= */
 function runKMeans(k, initCentroids, maxIter=50){
-  let centroids = (initCentroids || POINTS.slice(0,k)).map(p => ({x:p.x, y:p.y}));
+  let centroids = (initCentroids || POINTS.slice(0,k)).map(c => ({v:c.v.slice()}));
   let assignment = new Array(POINTS.length).fill(-1);
   const iterations = [];
   for(let iter=0; iter<maxIter; iter++){
@@ -424,14 +436,11 @@ function runKMeans(k, initCentroids, maxIter=50){
     });
     const newAssignment = rows.map(r=>r.cluster);
     const changed = newAssignment.some((v,i)=>v!==assignment[i]);
-    const oldCentroids = centroids.map(c=>({...c}));
+    const oldCentroids = centroids.map(c=>({v:c.v.slice()}));
     const newCentroids = centroids.map((c,ci) => {
       const members = rows.filter(r=>r.cluster===ci);
-      if(members.length===0) return {...c};
-      return {
-        x: members.reduce((s,m)=>s+m.p.x,0)/members.length,
-        y: members.reduce((s,m)=>s+m.p.y,0)/members.length
-      };
+      if(members.length===0) return {v:c.v.slice()};
+      return {v: c.v.map((_,d) => members.reduce((s,m)=>s+m.p.v[d],0)/members.length)};
     });
     iterations.push({iter:iter+1, centroidsUsed:oldCentroids, rows, newCentroids, changed});
     centroids = newCentroids;
@@ -442,11 +451,11 @@ function runKMeans(k, initCentroids, maxIter=50){
 }
 
 function renderKMeansIteration(block){
-  const k = block.centroidsUsed.length;
-  let chips = block.centroidsUsed.map((c,i) => `<span class="centroid-chip" style="background:${clusterColor(i)}">C${i+1} (${fmt(c.x,1)}, ${fmt(c.y,1)})</span>`).join("");
+  const k = block.centroidsUsed.length, D = FEATURES.length;
+  let chips = block.centroidsUsed.map((c,i) => `<span class="centroid-chip" style="background:${clusterColor(i)}">C${i+1} ${vecStr(c.v)}</span>`).join("");
 
-  let head = `<th>ID</th><th>X</th><th>Y</th>`;
-  for(let i=0;i<k;i++) head += `<th>Jarak ke C${i+1}(${fmt(block.centroidsUsed[i].x,1)},${fmt(block.centroidsUsed[i].y,1)})</th>`;
+  let head = `<th>ID</th>${FEATURES.map(f=>`<th>${f}</th>`).join('')}`;
+  for(let i=0;i<k;i++) head += `<th>Jarak ke C${i+1}${vecStr(block.centroidsUsed[i].v)}</th>`;
   head += `<th>Klaster Terpilih</th>`;
 
   let rows = block.rows.map(r => {
@@ -454,19 +463,20 @@ function renderKMeansIteration(block){
     let cells = r.dists.map((d,i) => {
       const c = block.centroidsUsed[i];
       const cls = (d===minD) ? 'formula hit' : 'formula';
-      return `<td class="${cls}">√(${r.p.x}−${fmt(c.x,1)})²+(${r.p.y}−${fmt(c.y,1)})²=${fmt(d)}</td>`;
+      const full = r.p.v.map((a,j)=>`(${nz(a)}−${fmt(c.v[j],1)})²`).join('+');
+      const txt = D<=3 ? `√${full}=${fmt(d)}` : `√Σ(xᵢ−cᵢ)²=${fmt(d)}`;
+      return `<td class="${cls}" title="√${full}">${txt}</td>`;
     }).join("");
-    return `<tr><td>${r.p.id}</td><td>${r.p.x}</td><td>${r.p.y}</td>${cells}<td>${clusterBadge(r.cluster)}</td></tr>`;
+    return `<tr><td>${r.p.id}</td>${r.p.v.map(a=>`<td>${nz(a)}</td>`).join('')}${cells}<td>${clusterBadge(r.cluster)}</td></tr>`;
   }).join("");
 
   let newCentroidRows = block.newCentroids.map((c,i) => {
-    const members = block.rows.filter(r=>r.cluster===i).map(r=>r.p.id);
-    return `<tr>
-      <td>${clusterBadge(i)}</td>
-      <td style="font-family:var(--mono); font-size:11px;">${members.join(', ') || '–'}</td>
-      <td class="formula">x̄ = (${members.length ? block.rows.filter(r=>r.cluster===i).map(r=>r.p.x).join('+') : '–'}) / ${members.length||1} = ${fmt(c.x,2)}</td>
-      <td class="formula">ȳ = (${members.length ? block.rows.filter(r=>r.cluster===i).map(r=>r.p.y).join('+') : '–'}) / ${members.length||1} = ${fmt(c.y,2)}</td>
-    </tr>`;
+    const mem = block.rows.filter(r=>r.cluster===i);
+    const cells = c.v.map((val,d) => {
+      const show = mem.length && mem.length<=8 && D<=3;
+      return `<td class="formula">${show ? `(${mem.map(r=>nz(r.p.v[d])).join('+')}) / ${mem.length} = ` : ''}${fmt(val,2)}</td>`;
+    }).join('');
+    return `<tr><td>${clusterBadge(i)}</td><td style="font-family:var(--mono); font-size:11px;">${mem.map(r=>r.p.id).join(', ') || '–'}</td>${cells}</tr>`;
   }).join("");
 
   const note = block.changed ? "" : `<div class="converged-note">✓ Konvergen — keanggotaan klaster tidak berubah lagi.</div>`;
@@ -478,10 +488,10 @@ function renderKMeansIteration(block){
     <div class="table-scroll">
       <table><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table>
     </div>
-    <table class="newc-table">
-      <thead><tr><th>Klaster</th><th>Anggota</th><th>Centroid Baru X</th><th>Centroid Baru Y</th></tr></thead>
+    <div class="table-scroll"><table class="newc-table">
+      <thead><tr><th>Klaster</th><th>Anggota</th>${FEATURES.map(f=>`<th>Centroid Baru ${f}</th>`).join('')}</tr></thead>
       <tbody>${newCentroidRows}</tbody>
-    </table>
+    </table></div>
     ${note}
   </div>`;
 }
@@ -726,15 +736,16 @@ document.getElementById('agglo-run').addEventListener('click', () => {
 });
 
 /* ============================= CENTROID AWAL (REKOMENDASI / MANUAL) ============================= */
+const MAX_K = 25;
 let CENTROID_PLAN = null;
 const kmeansKEl = document.getElementById('kmeans-k');
-function currentK(){ return Math.max(2, Math.min(10, N, parseInt(kmeansKEl.value) || 2)); }
+function currentK(){ return Math.max(2, Math.min(MAX_K, N, parseInt(kmeansKEl.value) || 2)); }
 
-function initFirst(k){ return POINTS.slice(0,k).map(p=>({x:p.x,y:p.y,src:p.id})); }
+function initFirst(k){ return POINTS.slice(0,k).map(p=>({v:p.v.slice(),src:p.id})); }
 function initFarthest(k){
-  const mx = POINTS.reduce((s,p)=>s+p.x,0)/N, my = POINTS.reduce((s,p)=>s+p.y,0)/N;
+  const mean = FEATURES.map((_,d)=>POINTS.reduce((s,p)=>s+p.v[d],0)/N);
   let cur = 0, bd = -1;
-  POINTS.forEach((p,i)=>{ const d = euclid(p,{x:mx,y:my}); if(d>bd){bd=d;cur=i;} });
+  POINTS.forEach((p,i)=>{ const d = euclid(p,{v:mean}); if(d>bd){bd=d;cur=i;} });
   const idx = [cur];
   while(idx.length<k){
     let nxt=-1, nd=-1;
@@ -745,22 +756,21 @@ function initFarthest(k){
     });
     idx.push(nxt);
   }
-  return idx.map(i=>({x:POINTS[i].x,y:POINTS[i].y,src:POINTS[i].id}));
+  return idx.map(i=>({v:POINTS[i].v.slice(),src:POINTS[i].id}));
 }
 function initSpread(k){
-  const xs=POINTS.map(p=>p.x), ys=POINTS.map(p=>p.y);
-  const x0=Math.min(...xs), y0=Math.min(...ys);
-  const rx=(Math.max(...xs)-x0)||1, ry=(Math.max(...ys)-y0)||1;
-  const order = POINTS.map((p,i)=>({i, s:(p.x-x0)/rx+(p.y-y0)/ry})).sort((a,b)=>a.s-b.s);
+  const mn = FEATURES.map((_,d)=>Math.min(...POINTS.map(p=>p.v[d])));
+  const rg = FEATURES.map((_,d)=>(Math.max(...POINTS.map(p=>p.v[d]))-mn[d])||1);
+  const order = POINTS.map((p,i)=>({i, s:p.v.reduce((a,x,d)=>a+(x-mn[d])/rg[d],0)})).sort((a,b)=>a.s-b.s);
   const out=[];
   for(let g=0; g<k; g++){
     const pt = POINTS[order[Math.floor((g+0.5)*N/k)].i];
-    out.push({x:pt.x,y:pt.y,src:pt.id});
+    out.push({v:pt.v.slice(),src:pt.id});
   }
   return out;
 }
 function sseOf(res){
-  return POINTS.reduce((s,p,i)=>{ const c=res.finalCentroids[res.finalAssignment[i]]; return s+(p.x-c.x)**2+(p.y-c.y)**2; },0);
+  return POINTS.reduce((s,p,i)=> s + euclid(p,res.finalCentroids[res.finalAssignment[i]])**2, 0);
 }
 
 function renderCentroidPanel(){
@@ -780,7 +790,7 @@ function renderCentroidPanel(){
 
   const rows = Object.keys(methods).map(key=>{
     const m = methods[key];
-    const chips = m.init.map((c,i)=>`<span class="centroid-chip" style="background:${clusterColor(i)}">C${i+1}=${c.src} (${fmt(c.x,1)}, ${fmt(c.y,1)})</span>`).join('');
+    const chips = m.init.map((c,i)=>`<span class="centroid-chip" style="background:${clusterColor(i)}">C${i+1}=${c.src} ${vecStr(c.v)}</span>`).join('');
     return `<tr>
       <td><input type="radio" name="cmethod" value="${key}" ${key===best?'checked':''}></td>
       <td style="text-align:left; font-weight:700;">${m.name}${key===best?'<span class="rec-badge">★ Rekomendasi</span>':''}</td>
@@ -796,14 +806,13 @@ function renderCentroidPanel(){
     <p class="desc" style="margin:8px 0 0;">Pilih salah satu metode di atas. Yang bertanda ★ punya SSE terendah (jika sama, iterasi paling sedikit).</p>`;
 
   const init = methods[best].init;
-  const opts = POINTS.map((p,j)=>`<option value="${j}">${p.id} (${p.x}, ${p.y})</option>`).join('');
+  const opts = POINTS.map((p,j)=>`<option value="${j}">${p.id} ${vecStr(p.v,1)}</option>`).join('');
   document.getElementById('cent-manual').innerHTML =
-    `<p class="desc" style="margin:0 0 10px;">Pilih titik data sebagai centroid, atau isi koordinat bebas. Nilai awal diisi dari rekomendasi.</p>` +
+    `<p class="desc" style="margin:0 0 10px;">Pilih titik data sebagai centroid, atau isi koordinat tiap fitur secara bebas (${k} centroid × ${FEATURES.length} fitur). Nilai awal diisi dari rekomendasi.</p>` +
     init.map((c,i)=>`<div class="mrow">
       <span class="centroid-chip" style="background:${clusterColor(i)}">C${i+1}</span>
       <select data-i="${i}" id="ms${i}"><option value="">koordinat bebas</option>${opts}</select>
-      x <input type="text" inputmode="decimal" class="mcoord" data-i="${i}" id="mx${i}" value="${c.x}">
-      y <input type="text" inputmode="decimal" class="mcoord" data-i="${i}" id="my${i}" value="${c.y}">
+      ${c.v.map((val,d)=>`<span class="fl" title="${FEATURES[d]}">${FEATURES[d]}</span><input type="text" inputmode="decimal" class="mcoord" data-i="${i}" data-d="${d}" id="mc${i}_${d}" value="${nz(val)}">`).join('')}
     </div>`).join('');
   init.forEach((c,i)=>{ document.getElementById('ms'+i).value = String(POINTS.findIndex(p=>p.id===c.src)); });
   updatePreview();
@@ -815,16 +824,16 @@ function getInitCentroids(k){
   if(mode==='manual'){
     const out=[];
     for(let i=0;i<k;i++){
-      const x=toNum(document.getElementById('mx'+i).value), y=toNum(document.getElementById('my'+i).value);
-      if(isNaN(x)||isNaN(y)) return {error:'Koordinat C'+(i+1)+' belum valid (harus angka).'};
-      out.push({x,y});
+      const v = FEATURES.map((_,d)=>toNum(document.getElementById('mc'+i+'_'+d).value));
+      if(v.some(isNaN)) return {error:'Koordinat C'+(i+1)+' belum valid (harus angka).'};
+      out.push({v});
     }
     return {init:out, label:'pilihan sendiri'};
   }
   const chosen = document.querySelector('input[name=cmethod]:checked');
   const key = chosen ? chosen.value : CENTROID_PLAN.best;
   const m = CENTROID_PLAN.methods[key];
-  return {init:m.init.map(c=>({x:c.x,y:c.y})), label:m.name + (key===CENTROID_PLAN.best?' (rekomendasi)':'')};
+  return {init:m.init.map(c=>({v:c.v.slice()})), label:m.name + (key===CENTROID_PLAN.best?' (rekomendasi)':'')};
 }
 
 function updatePreview(){
@@ -834,7 +843,7 @@ function updatePreview(){
   const el = document.getElementById('cent-preview');
   if(sel.error){ el.innerHTML = `<div class="empty-note">${sel.error}</div>`; return; }
   drawScatter(el, null, sel.init, k);
-  el.insertAdjacentHTML('afterbegin','<div class="desc" style="margin:0 0 6px;">Pratinjau posisi centroid awal (◆)</div>');
+  el.insertAdjacentHTML('afterbegin',`<div class="desc" style="margin:0 0 6px;">Pratinjau posisi centroid awal (◆)${FEATURES.length>2 ? ' — proyeksi ' + FEATURES[PX] + ' vs ' + FEATURES[PY] : ''}</div>`);
 }
 
 const centCard = document.getElementById('centroid-card');
@@ -847,8 +856,7 @@ centCard.addEventListener('change', e=>{
   }
   if(t.matches('select[data-i]') && t.value!==''){
     const p = POINTS[+t.value], i = t.dataset.i;
-    document.getElementById('mx'+i).value = p.x;
-    document.getElementById('my'+i).value = p.y;
+    p.v.forEach((val,d)=>{ document.getElementById('mc'+i+'_'+d).value = nz(val); });
   }
   updatePreview();
 });
@@ -861,10 +869,9 @@ centCard.addEventListener('input', e=>{
 kmeansKEl.addEventListener('change', renderCentroidPanel);
 
 /* ============================= UPLOAD DATASET (XLSX / CSV) ============================= */
-const DEFAULT_DATASET = {name:'Pelanggan Kafe', xl:FEATURE_X_LABEL, yl:FEATURE_Y_LABEL, pts:POINTS.map(p=>({...p}))};
+const DEFAULT_DATASET = {name:'Pelanggan Kafe', features:FEATURES.slice(), pts:POINTS.map(p=>({id:p.id, v:p.v.slice()}))};
 const MAX_ROWS = 200;
 let PARSED = null;
-const upX = document.getElementById('up-x'), upY = document.getElementById('up-y');
 
 function showMsg(text, isErr){
   const el = document.getElementById('upload-msg');
@@ -939,43 +946,51 @@ function ingest(rows, name){
   }
   if(numericCols.length<2) throw new Error('Butuh minimal 2 kolom numerik untuk dijadikan fitur.');
   PARSED = {name, header, data, numericCols, idCol, truncated};
-  const optHTML = numericCols.map(c=>`<option value="${c}">${header[c]}</option>`).join('');
-  upX.innerHTML = optHTML; upY.innerHTML = optHTML;
-  upX.value = String(numericCols[0]); upY.value = String(numericCols[1]);
+  document.getElementById('feat-list').innerHTML = numericCols.map((c,i)=>
+    `<label class="chk"><input type="checkbox" value="${c}" ${i<2?'checked':''}> ${header[c]}</label>`).join('');
   document.getElementById('feature-controls').style.display = 'flex';
   applyParsed();
 }
 
 function applyParsed(){
   const P = PARSED; if(!P) return;
-  const xc = +upX.value, yc = +upY.value;
-  if(xc===yc){ showMsg('Fitur X dan Y harus kolom yang berbeda.', true); return; }
+  const cols = [...document.querySelectorAll('#feat-list input:checked')].map(i=>+i.value);
+  if(cols.length<2){ showMsg('Centang minimal 2 fitur.', true); return; }
   const pts=[], seen=new Set(); let skipped=0;
   P.data.forEach(r=>{
-    const x=toNum(r[xc]), y=toNum(r[yc]);
-    if(isNaN(x)||isNaN(y)){ skipped++; return; }
+    const v = cols.map(c=>toNum(r[c]));
+    if(v.some(isNaN)){ skipped++; return; }
     let id = (P.idCol>=0 && String(r[P.idCol]).trim()!=='') ? clean(r[P.idCol]) : 'P'+(pts.length+1);
     if(!id) id = 'P'+(pts.length+1);
     let u=id, n=2; while(seen.has(u)) u = id+'_'+(n++);
     seen.add(u);
-    pts.push({id:u,x,y});
+    pts.push({id:u,v});
   });
   if(pts.length<3){ showMsg('Data numerik yang valid kurang dari 3 baris.', true); return; }
-  setDataset(pts, P.name.replace(/\.[^.]+$/,''), P.header[xc], P.header[yc]);
-  showMsg(`✓ ${P.name}: ${pts.length} baris dimuat (X = ${P.header[xc]}, Y = ${P.header[yc]})` +
+  setDataset(pts, P.name.replace(/\.[^.]+$/,''), cols.map(c=>P.header[c]));
+  showMsg(`✓ ${P.name}: ${pts.length} baris, ${cols.length} fitur (${cols.map(c=>P.header[c]).join(', ')})` +
     (skipped ? ` · ${skipped} baris dilewati karena nilai kosong/non-numerik` : '') +
     (P.truncated ? ` · dibatasi ${MAX_ROWS} baris pertama` : '') + '.', false);
 }
 
-function setDataset(pts, name, xl, yl){
-  POINTS = pts; FEATURE_X_LABEL = xl; FEATURE_Y_LABEL = yl;
+function fillPlotSelects(){
+  const opt = FEATURES.map((f,i)=>`<option value="${i}">${f}</option>`).join('');
+  const px = document.getElementById('plot-x'), py = document.getElementById('plot-y');
+  px.innerHTML = opt; py.innerHTML = opt;
+  PX = 0; PY = 1; px.value = '0'; py.value = '1';
+  document.getElementById('plot-axes').style.display = FEATURES.length>2 ? 'flex' : 'none';
+}
+
+function setDataset(pts, name, features){
+  POINTS = pts; FEATURES = features;
   buildDist();
+  fillPlotSelects();
   document.getElementById('dataset-title').textContent = 'Dataset ' + name;
-  document.getElementById('dataset-count').textContent = `(${N} baris · ID, ${xl}, ${yl})`;
-  document.getElementById('hero-ds').textContent = `Dataset: ${name} (${N} sampel, 2 fitur: ${xl} & ${yl}).`;
+  document.getElementById('dataset-count').textContent = `(${N} baris · ID, ${features.join(', ')})`;
+  document.getElementById('hero-ds').textContent = `Dataset: ${name} (${N} sampel, ${features.length} fitur: ${features.join(', ')}).`;
   document.getElementById('dist-dim').textContent = `${N} × ${N}`;
-  kmeansKEl.max = Math.min(10, N);
-  kmeansKEl.value = Math.min(parseInt(kmeansKEl.value)||2, Math.min(10,N));
+  kmeansKEl.max = Math.min(MAX_K, N);
+  kmeansKEl.value = Math.min(parseInt(kmeansKEl.value)||2, Math.min(MAX_K,N));
   const ak = document.getElementById('agglo-k');
   ak.max = N-1; ak.value = Math.min(parseInt(ak.value)||3, N-1);
   renderDatasetTable();
@@ -985,8 +1000,14 @@ function setDataset(pts, name, xl, yl){
   document.getElementById('agglo-run').click();
 }
 
-upX.addEventListener('change', applyParsed);
-upY.addEventListener('change', applyParsed);
+function rerunPlots(){
+  document.getElementById('kmeans-run').click();
+  document.getElementById('agglo-run').click();
+  updatePreview();
+}
+document.getElementById('plot-x').addEventListener('change', e=>{ PX = +e.target.value; rerunPlots(); });
+document.getElementById('plot-y').addEventListener('change', e=>{ PY = +e.target.value; rerunPlots(); });
+document.getElementById('feat-list').addEventListener('change', applyParsed);
 document.getElementById('file-input').addEventListener('change', e => { loadFile(e.target.files[0]); e.target.value=''; });
 const dz = document.getElementById('dropzone');
 ['dragenter','dragover'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.add('over'); }));
@@ -995,7 +1016,7 @@ dz.addEventListener('drop', e => loadFile(e.dataTransfer.files[0]));
 document.getElementById('use-sample').addEventListener('click', () => {
   PARSED = null;
   document.getElementById('feature-controls').style.display = 'none';
-  setDataset(DEFAULT_DATASET.pts.map(p=>({...p})), DEFAULT_DATASET.name, DEFAULT_DATASET.xl, DEFAULT_DATASET.yl);
+  setDataset(DEFAULT_DATASET.pts.map(p=>({id:p.id, v:p.v.slice()})), DEFAULT_DATASET.name, DEFAULT_DATASET.features.slice());
   document.getElementById('hero-ds').textContent = 'Dataset contoh: pelanggan kafe (20 sampel, 2 fitur: Kunjungan/Bulan & Pengeluaran).';
   showMsg('✓ Kembali memakai dataset contoh.', false);
 });
